@@ -323,6 +323,42 @@ app.post("/api/session/:sessionId/end", auth, async (req, res) => {
 
   return res.json({ ok: true, status, shot_count: sc, uploaded_count: uploadedCount });
 });
+// ===== LIST SESSIONS FOR DASHBOARD =====
+app.get("/api/sessions", auth, async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || "50", 10), 200);
+
+  try {
+    const r = await pool.query(
+      `
+      SELECT
+        s.session_id,
+        s.created_at,
+        s.status,
+        s.shot_count,
+        s.uploaded_count
+      FROM sessions s
+      WHERE s.user_id = $1
+      ORDER BY s.created_at DESC
+      LIMIT $2
+      `,
+      [req.user.userId, limit]
+    );
+
+    return res.json({
+      ok: true,
+      sessions: r.rows.map(row => ({
+        session_id: row.session_id,
+        created_at: row.created_at,
+        shot_count: row.shot_count,
+        uploaded_count: row.uploaded_count,
+        status: row.status
+      }))
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
 
 // Health
 app.get("/", (req, res) => res.send("OK"));

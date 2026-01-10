@@ -655,7 +655,7 @@ app.post("/api/session/start", auth, async (req, res) => {
       `
       SELECT
         session_id,
-        to_char((created_at AT TIME ZONE 'Asia/Ho_Chi_Minh'), 'FMYYYY-FMMM-FMDD HH24:MI') AS created_at_vn
+        to_char(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'FMYYYY-FMMM-FMDD HH24:MI:SS') AS created_at_vn
       FROM sessions
       WHERE session_id = $1
       `,
@@ -779,7 +779,7 @@ app.get("/api/sessions", auth, async (req, res) => {
       `
       SELECT
         s.session_id,
-        to_char((s.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh'), 'FMYYYY-FMMM-FMDD HH24:MI') AS created_at_vn,
+        to_char((s.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh'), 'YYYY-FMMM-FMDD HH24:MI:SS') AS created_at_vn,
         s.status,
         s.shot_count,
         s.uploaded_count

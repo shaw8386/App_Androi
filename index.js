@@ -72,6 +72,11 @@ async function initDb() {
         note TEXT
       );
     `);
+    // ✅ Optional: lưu raw client_time_vn để debug/đối soát (không ảnh hưởng logic)
+    await client.query(`
+      ALTER TABLE sessions
+      ADD COLUMN IF NOT EXISTS client_time_vn TEXT;
+    `);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS session_files (
@@ -151,19 +156,20 @@ function auth(req, res, next) {
 }
 
 // ===== HELPERS =====
+function vnNowString() {
+  // sv-SE trả "YYYY-MM-DD HH:mm:ss"
+  return new Date().toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
+}
+
 function makeSessionId(deviceId) {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  const ts =
-    d.getFullYear() +
-    pad(d.getMonth() + 1) +
-    pad(d.getDate()) +
-    "_" +
-    pad(d.getHours()) +
-    pad(d.getMinutes()) +
-    pad(d.getSeconds());
+  const s = vnNowString(); // "2026-01-10 12:30:05"
+  const ts = s
+    .replaceAll("-", "")
+    .replace(" ", "_")
+    .replaceAll(":", ""); // "20260110_123005"
   return `${deviceId}_${ts}`;
 }
+
 
 // ===== AUTH ROUTES =====
 
@@ -210,19 +216,58 @@ app.get("/api/me", auth, async (req, res) => {
 // ===== SESSION ROUTES =====
 
 app.post("/api/session/start", auth, async (req, res) => {
-  const { device_id } = req.body || {};
+  const { device_id, client_time_vn } = req.body || {};
   if (!device_id) return res.status(400).json({ error: "MISSING_DEVICE_ID" });
 
   const sessionId = makeSessionId(device_id);
 
+  // client_time_vn expect: "yyyy-MM-dd HH:mm:ss" (giờ VN)
+  // Nếu thiếu/không hợp lệ -> fallback now()
+  const hasClientTime =
+    typeof client_time_vn === "string" &&
+    /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/.test(client_time_vn.trim());
+
   try {
-    await pool.query(
-      `INSERT INTO sessions(session_id, user_id, device_id, status, shot_count, uploaded_count)
-       VALUES($1,$2,$3,'PENDING',0,0)`,
-      [sessionId, req.user.userId, device_id]
+    if (hasClientTime) {
+      await pool.query(
+        `
+        INSERT INTO sessions(session_id, user_id, device_id, created_at, client_time_vn, status, shot_count, uploaded_count)
+        VALUES(
+          $1, $2, $3,
+          ($4)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh',
+          $4,
+          'PENDING', 0, 0
+        )
+        `,
+        [sessionId, req.user.userId, device_id, client_time_vn.trim()]
+      );
+    } else {
+      await pool.query(
+        `
+        INSERT INTO sessions(session_id, user_id, device_id, status, shot_count, uploaded_count)
+        VALUES($1,$2,$3,'PENDING',0,0)
+        `,
+        [sessionId, req.user.userId, device_id]
+      );
+    }
+
+    // ✅ trả thêm created_at_vn cho app dùng ngay nếu muốn
+    const r = await pool.query(
+      `
+      SELECT
+        session_id,
+        to_char(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'FMYYYY-FMMM-FMDD HH24:MI') AS created_at_vn
+      FROM sessions
+      WHERE session_id = $1
+      `,
+      [sessionId]
     );
 
-    return res.json({ ok: true, session_id: sessionId });
+    return res.json({
+      ok: true,
+      session_id: sessionId,
+      created_at_vn: r.rows?.[0]?.created_at_vn || null,
+    });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "SERVER_ERROR" });
@@ -333,6 +378,7 @@ app.get("/api/sessions", auth, async (req, res) => {
       SELECT
         s.session_id,
         s.created_at,
+        to_char(s.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'FMYYYY-FMMM-FMDD HH24:MI') AS created_at_vn,
         s.status,
         s.shot_count,
         s.uploaded_count
@@ -348,7 +394,8 @@ app.get("/api/sessions", auth, async (req, res) => {
       ok: true,
       sessions: r.rows.map(row => ({
         session_id: row.session_id,
-        created_at: row.created_at,
+        created_at: row.created_at,         // giữ nguyên cho tương thích
+        created_at_vn: row.created_at_vn,   // ✅ thêm mới (Dashboard nên ưu tiên dùng cái này)
         shot_count: row.shot_count,
         uploaded_count: row.uploaded_count,
         status: row.status

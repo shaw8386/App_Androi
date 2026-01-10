@@ -368,6 +368,7 @@ app.post("/api/session/:sessionId/end", auth, async (req, res) => {
 
   return res.json({ ok: true, status, shot_count: sc, uploaded_count: uploadedCount });
 });
+
 // ===== LIST SESSIONS FOR DASHBOARD =====
 app.get("/api/sessions", auth, async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || "50", 10), 200);
@@ -378,7 +379,8 @@ app.get("/api/sessions", auth, async (req, res) => {
       SELECT
         s.session_id,
         s.created_at,
-        to_char(s.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'FMYYYY-FMMM-FMDD HH24:MI') AS created_at_vn,
+        -- ✅ created_at_vn: giờ Việt Nam, format YYYY-M-D HH24:MI
+        to_char((s.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh'), 'YYYY-FMMM-FMDD HH24:MI') AS created_at_vn,
         s.status,
         s.shot_count,
         s.uploaded_count
@@ -394,8 +396,7 @@ app.get("/api/sessions", auth, async (req, res) => {
       ok: true,
       sessions: r.rows.map(row => ({
         session_id: row.session_id,
-        created_at: row.created_at,         // giữ nguyên cho tương thích
-        created_at_vn: row.created_at_vn,   // ✅ thêm mới (Dashboard nên ưu tiên dùng cái này)
+        created_at_vn: row.created_at_vn, // ✅ chỉ dùng cái này ở app
         shot_count: row.shot_count,
         uploaded_count: row.uploaded_count,
         status: row.status
@@ -406,6 +407,7 @@ app.get("/api/sessions", auth, async (req, res) => {
     return res.status(500).json({ error: "SERVER_ERROR" });
   }
 });
+
 
 // Health
 app.get("/", (req, res) => res.send("OK"));

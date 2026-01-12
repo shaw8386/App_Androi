@@ -453,6 +453,33 @@ app.get("/api/sessions", auth, async (req, res) => {
   }
 });
 
+// ===================== STATS ROUTES =====================
+// GET monthly gold coin count (approved sessions this month)
+app.get("/api/stats/monthly-coins", auth, async (req, res) => {
+  try {
+    // Use PostgreSQL to get first day of current month in Vietnam timezone
+    const r = await pool.query(
+      `
+      SELECT COUNT(*)::int AS count
+      FROM sessions
+      WHERE user_id = $1
+        AND is_approved = true
+        AND created_at >= date_trunc('month', (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')) AT TIME ZONE 'Asia/Ho_Chi_Minh'
+      `,
+      [req.user.userId]
+    );
+
+    const count = r.rows[0]?.count || 0;
+    return res.json({
+      ok: true,
+      count: count,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
+
 // ===================== ACCOUNT INFO ROUTES =====================
 // GET account info - returns 404 if not found
 app.get("/api/account/info", auth, async (req, res) => {

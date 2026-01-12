@@ -68,6 +68,12 @@ async function initDb() {
       ADD COLUMN IF NOT EXISTS client_time_vn TEXT;
     `);
 
+    // Add is_approved column for admin approval (gold coin icon)
+    await client.query(`
+      ALTER TABLE sessions
+      ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT false;
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS session_files (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -370,7 +376,8 @@ app.get("/api/sessions", auth, async (req, res) => {
         to_char((s.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh'), 'YYYY-FMMM-FMDD HH24:MI:SS') AS created_at_vn,
         s.status,
         s.shot_count,
-        s.uploaded_count
+        s.uploaded_count,
+        s.is_approved
       FROM sessions s
       WHERE s.user_id = $1
       ORDER BY s.created_at DESC
@@ -387,6 +394,7 @@ app.get("/api/sessions", auth, async (req, res) => {
         shot_count: row.shot_count,
         uploaded_count: row.uploaded_count,
         status: row.status,
+        is_approved: row.is_approved || false,
       })),
     });
   } catch (e) {

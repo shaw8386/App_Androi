@@ -394,7 +394,10 @@ app.get("/api/sessions", auth, async (req, res) => {
         shot_count: row.shot_count,
         uploaded_count: row.uploaded_count,
         status: row.status,
-        is_approved: row.is_approved || false,
+        // is_approved: boolean from database (true/false)
+        // When admin sets is_approved=true in DB, this will be true
+        // App will show 🪙 icon when is_approved=true
+        is_approved: Boolean(row.is_approved), // Explicit boolean conversion
       })),
     });
   } catch (e) {

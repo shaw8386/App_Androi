@@ -365,6 +365,46 @@ app.post("/api/session/:sessionId/end", auth, async (req, res) => {
 // ===================== LIST SESSIONS FOR DASHBOARD =====================
 // ✅ Ẩn created_at cũ, chỉ trả created_at_vn
 // ✅ Sort chuẩn theo created_at DESC (mới nhất lên đầu)
+// app.get("/api/sessions", auth, async (req, res) => {
+//   const limit = Math.min(parseInt(req.query.limit || "50", 10), 200);
+
+//   try {
+//     const r = await pool.query(
+//       `
+//       SELECT
+//         s.session_id,
+//         to_char((s.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh'), 'YYYY-FMMM-FMDD HH24:MI:SS') AS created_at_vn,
+//         s.status,
+//         s.shot_count,
+//         s.uploaded_count,
+//         s.is_approved
+//       FROM sessions s
+//       WHERE s.user_id = $1
+//       ORDER BY s.created_at DESC
+//       LIMIT $2
+//       `,
+//       [req.user.userId, limit]
+//     );
+
+//     return res.json({
+//       ok: true,
+//       sessions: r.rows.map((row) => ({
+//         session_id: row.session_id,
+//         created_at_vn: row.created_at_vn,
+//         shot_count: row.shot_count,
+//         uploaded_count: row.uploaded_count,
+//         status: row.status,
+//         // is_approved: boolean from database (true/false)
+//         // When admin sets is_approved=true in DB, this will be true
+//         // App will show 🪙 icon when is_approved=true
+//         is_approved: Boolean(row.is_approved), // Explicit boolean conversion
+//       })),
+//     });
+//   } catch (e) {
+//     console.error(e);
+//     return res.status(500).json({ error: "SERVER_ERROR" });
+//   }
+// });
 app.get("/api/sessions", auth, async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || "50", 10), 200);
 
@@ -377,10 +417,19 @@ app.get("/api/sessions", auth, async (req, res) => {
         s.status,
         s.shot_count,
         s.uploaded_count,
-        s.is_approved
+        s.is_approved,
+        s.client_time_vn
       FROM sessions s
       WHERE s.user_id = $1
-      ORDER BY s.created_at DESC
+      ORDER BY
+        (
+          CASE
+            WHEN s.client_time_vn IS NOT NULL
+             AND s.client_time_vn ~ '^\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}$'
+            THEN (s.client_time_vn::timestamp)  -- parse "YYYY-MM-DD HH:mm:ss"
+            ELSE (s.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::timestamp
+          END
+        ) DESC
       LIMIT $2
       `,
       [req.user.userId, limit]
@@ -394,10 +443,8 @@ app.get("/api/sessions", auth, async (req, res) => {
         shot_count: row.shot_count,
         uploaded_count: row.uploaded_count,
         status: row.status,
-        // is_approved: boolean from database (true/false)
-        // When admin sets is_approved=true in DB, this will be true
-        // App will show 🪙 icon when is_approved=true
-        is_approved: Boolean(row.is_approved), // Explicit boolean conversion
+        is_approved: Boolean(row.is_approved),
+        client_time_vn: row.client_time_vn || null, // optional nếu bạn muốn debug hiển thị
       })),
     });
   } catch (e) {
